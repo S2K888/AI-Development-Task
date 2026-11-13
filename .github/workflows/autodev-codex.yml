@@ -1,0 +1,88 @@
+name: AutoDev Codex
+run-name: AutoDev ${{ inputs.request_id }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      request_id:
+        description: n8n request identifier
+        required: true
+        type: string
+      branch_name:
+        description: Dedicated autodev/ branch name
+        required: true
+        type: string
+      requirement:
+        description: Original development requirement
+        required: true
+        type: string
+      task_plan:
+        description: Approved implementation plan
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  autodev:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate target branch
+        env:
+          BRANCH_NAME: ${{ inputs.branch_name }}
+        shell: bash
+        run: |
+          if [[ ! "$BRANCH_NAME" =~ ^autodev/[A-Za-z0-9._/-]+$ ]] || [[ "$BRANCH_NAME" == *..* ]] || [[ "$BRANCH_NAME" == */ ]] || [[ "$BRANCH_NAME" == *// ]]; then
+            echo "branch_name must be a safe autodev/... branch" >&2
+            exit 1
+          fi
+          if [[ "$BRANCH_NAME" == "main" ]]; then
+            echo "main is not an allowed target" >&2
+            exit 1
+          fi
+
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Create isolated branch
+        env:
+          BRANCH_NAME: ${{ inputs.branch_name }}
+        run: git switch --create "$BRANCH_NAME"
+
+      - name: Codex implementation
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt: |
+            Implement the approved plan in this repository.
+            Request ID: ${{ inputs.request_id }}
+            Requirement:
+            ${{ inputs.requirement }}
+            Approved task plan:
+            ${{ inputs.task_plan }}
+            Follow existing project conventions. Do not claim tests passed unless you ran them.
+            Do not modify workflow files, secrets, or deployment configuration.
+
+      - name: 真实测试 (pytest)
+        run: python -m pytest -q
+
+      - name: Push isolated branch
+        env:
+          BRANCH_NAME: ${{ inputs.branch_name }}
+        run: git push --set-upstream origin "$BRANCH_NAME"
+
+      - name: Create pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BRANCH_NAME: ${{ inputs.branch_name }}
+          REQUEST_ID: ${{ inputs.request_id }}
+        run: |
+          gh pr create --base main --head "$BRANCH_NAME" \
+            --title "AutoDev: $REQUEST_ID" \
+            --body "Automated proposal for request $REQUEST_ID. Review the changes and test results before merging. This workflow never merges or deploys."
