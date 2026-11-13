@@ -69,16 +69,13 @@ jobs:
             Follow existing project conventions. Do not claim tests passed unless you ran them.
             Do not modify workflow files, secrets, or deployment configuration.
 
-      - name: 真实测试 (pytest)
-        run: python -m pytest -q
+      - name: Set up Python`n        uses: actions/setup-python@v5`n        with:`n          python-version: "3.12"`n`n      - name: Install pytest`n        run: python -m pip install pytest`n`n      - name: 真实测试 (pytest)`n        run: python -m pytest -q
 
-      - name: Push isolated branch
-        env:
+      - name: Push isolated branch`n        if: ${{ !cancelled() }}`n        env:
           BRANCH_NAME: ${{ inputs.branch_name }}
         run: git push --set-upstream origin "$BRANCH_NAME"
 
-      - name: Create pull request
-        env:
+      - name: Create pull request`n        if: ${{ !cancelled() }}`n        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BRANCH_NAME: ${{ inputs.branch_name }}
           REQUEST_ID: ${{ inputs.request_id }}
